@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-const BACKEND_IP = "172.20.10.13";
+const BACKEND_IP = process.env.NEXT_PUBLIC_BACKEND_HOST || "localhost";
 
 // Deepfake detection result interface
 interface DeepfakeResult {
@@ -47,12 +47,20 @@ export default function ConferencePage() {
   const [remoteDeepfakeResult, setRemoteDeepfakeResult] = useState<DeepfakeResult | null>(null);
   const [isDetectionEnabled, setIsDetectionEnabled] = useState(true);
   const [detectionStatus, setDetectionStatus] = useState<'idle' | 'checking' | 'error'>('idle');
+  
+  // Video testing states
+  const [showTestPanel, setShowTestPanel] = useState(false);
+  const [testVideoUrl, setTestVideoUrl] = useState<string | null>(null);
+  const [testVideoResult, setTestVideoResult] = useState<DeepfakeResult | null>(null);
+  const [isTestingVideo, setIsTestingVideo] = useState(false);
+  const testVideoRef = useRef<HTMLVideoElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // Function to capture frame from video and send to detection API
   const captureAndDetect = useCallback(async (
     videoElement: HTMLVideoElement | null,
     setResult: (result: DeepfakeResult | null) => void,
-    label: string
+    source: string
   ) => {
     if (!videoElement || videoElement.readyState < 2 || !isDetectionEnabled) return;
 
@@ -68,13 +76,13 @@ export default function ConferencePage() {
       if (!ctx) return;
       
       ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
-      const frameBase64 = canvas.toDataURL('image/jpeg', 0.8);
+      const frameBase64 = canvas.toDataURL('image/jpeg', 0.9);
       
-      // Send to detection API
+      // Send to detection API with source identifier
       const response = await fetch(`http://${BACKEND_IP}:8000/api/detect/face`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ frame: frameBase64 }),
+        body: JSON.stringify({ frame: frameBase64, source: source }),
       });
       
       if (response.ok) {
@@ -83,7 +91,7 @@ export default function ConferencePage() {
         setDetectionStatus('idle');
       }
     } catch (err) {
-      console.error(`Detection error (${label}):`, err);
+      console.error(`Detection error (${source}):`, err);
       setDetectionStatus('error');
     }
   }, [isDetectionEnabled]);
@@ -98,16 +106,21 @@ export default function ConferencePage() {
       return;
     }
 
-    // Run detection every 2 seconds
+    // Run initial detection immediately
+    captureAndDetect(localVideoRef.current, setLocalDeepfakeResult, 'local');
+
+    // Run detection every 1.5 seconds for faster response
     detectionIntervalRef.current = setInterval(() => {
       // Detect local video
       captureAndDetect(localVideoRef.current, setLocalDeepfakeResult, 'local');
       
-      // Detect remote video if connected
+      // Detect remote video if connected - use separate source for independent buffering
       if (hasRemote && remoteVideoRef.current) {
-        captureAndDetect(remoteVideoRef.current, setRemoteDeepfakeResult, 'remote');
+        setTimeout(() => {
+          captureAndDetect(remoteVideoRef.current, setRemoteDeepfakeResult, 'remote');
+        }, 500); // Stagger remote detection to avoid overloading
       }
-    }, 2000);
+    }, 1500);
 
     return () => {
       if (detectionIntervalRef.current) {
@@ -615,31 +628,40 @@ export default function ConferencePage() {
                 bottom: "24px",
                 left: "24px",
                 right: "24px",
-                padding: "8px 12px",
+                padding: "10px 14px",
                 borderRadius: "8px",
                 background: localDeepfakeResult.is_fake 
-                  ? "rgba(239, 68, 68, 0.9)" 
+                  ? "rgba(239, 68, 68, 0.95)" 
                   : localDeepfakeResult.face_detected 
-                    ? "rgba(34, 197, 94, 0.9)"
+                    ? "rgba(34, 197, 94, 0.95)"
                     : "rgba(156, 163, 175, 0.9)",
                 color: "#fff",
-                fontSize: "12px",
+                fontSize: localDeepfakeResult.is_fake ? "14px" : "13px",
+                fontWeight: "bold",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "space-between",
                 backdropFilter: "blur(4px)",
+                border: localDeepfakeResult.is_fake ? "2px solid #ff0000" : localDeepfakeResult.face_detected ? "2px solid #22c55e" : "none",
+                animation: localDeepfakeResult.is_fake ? "flash 0.5s infinite" : "none",
+                boxShadow: localDeepfakeResult.is_fake ? "0 0 20px rgba(255, 0, 0, 0.8)" : localDeepfakeResult.face_detected ? "0 0 10px rgba(34, 197, 94, 0.5)" : "none",
               }}
             >
               <span>
                 {localDeepfakeResult.is_fake 
-                  ? "⚠️ DEEPFAKE DETECTED" 
+                  ? "🚨 DEEPFAKE DETECTED 🚨" 
                   : localDeepfakeResult.face_detected 
-                    ? "✅ AUTHENTIC"
+                    ? "✅ GENUINE FACE (YOU)"
                     : "👤 No face"}
               </span>
-              <span style={{ opacity: 0.8 }}>
+              <span style={{ 
+                background: localDeepfakeResult.is_fake ? "rgba(0,0,0,0.3)" : "rgba(255,255,255,0.2)",
+                padding: "2px 8px",
+                borderRadius: "12px",
+                fontSize: "12px"
+              }}>
                 {localDeepfakeResult.face_detected 
-                  ? `${(localDeepfakeResult.confidence * 100).toFixed(1)}%`
+                  ? `${(localDeepfakeResult.confidence * 100).toFixed(0)}%`
                   : ""}
               </span>
             </div>
@@ -655,11 +677,22 @@ export default function ConferencePage() {
               position: "relative",
             }}
           >
-            <span
-              style={{ color: "#fff", marginBottom: "12px", display: "block" }}
-            >
-              Remote
-            </span>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "12px" }}>
+              <span style={{ color: "#fff" }}>Remote Participant</span>
+              {remoteDeepfakeResult && isDetectionEnabled && (
+                <span style={{
+                  padding: "2px 8px",
+                  background: remoteDeepfakeResult.is_fake ? "#ef4444" : remoteDeepfakeResult.face_detected ? "#22c55e" : "#666",
+                  color: "#fff",
+                  borderRadius: "4px",
+                  fontSize: "11px",
+                  fontWeight: "bold",
+                  animation: remoteDeepfakeResult.is_fake ? "flash 0.5s infinite" : "none",
+                }}>
+                  {remoteDeepfakeResult.is_fake ? "⚠️ FAKE" : remoteDeepfakeResult.face_detected ? "✓ REAL" : "?"}
+                </span>
+              )}
+            </div>
             <video
               ref={remoteVideoRef}
               autoPlay
@@ -680,32 +713,40 @@ export default function ConferencePage() {
                   bottom: "24px",
                   left: "24px",
                   right: "24px",
-                  padding: "8px 12px",
+                  padding: "10px 14px",
                   borderRadius: "8px",
                   background: remoteDeepfakeResult.is_fake 
                     ? "rgba(239, 68, 68, 0.95)" 
                     : remoteDeepfakeResult.face_detected 
-                      ? "rgba(34, 197, 94, 0.9)"
+                      ? "rgba(34, 197, 94, 0.95)"
                       : "rgba(156, 163, 175, 0.9)",
                   color: "#fff",
-                  fontSize: "12px",
+                  fontSize: remoteDeepfakeResult.is_fake ? "14px" : "13px",
+                  fontWeight: "bold",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
                   backdropFilter: "blur(4px)",
-                  border: remoteDeepfakeResult.is_fake ? "2px solid #ef4444" : "none",
+                  border: remoteDeepfakeResult.is_fake ? "2px solid #ff0000" : remoteDeepfakeResult.face_detected ? "2px solid #22c55e" : "none",
+                  animation: remoteDeepfakeResult.is_fake ? "flash 0.5s infinite" : "none",
+                  boxShadow: remoteDeepfakeResult.is_fake ? "0 0 20px rgba(255, 0, 0, 0.8)" : remoteDeepfakeResult.face_detected ? "0 0 10px rgba(34, 197, 94, 0.5)" : "none",
                 }}
               >
-                <span style={{ fontWeight: remoteDeepfakeResult.is_fake ? "bold" : "normal" }}>
+                <span>
                   {remoteDeepfakeResult.is_fake 
-                    ? "🚨 DEEPFAKE ALERT" 
+                    ? "🚨 DEEPFAKE DETECTED (REMOTE) 🚨" 
                     : remoteDeepfakeResult.face_detected 
-                      ? "✅ AUTHENTIC"
-                      : "👤 No face"}
+                      ? "✅ GENUINE FACE (REMOTE)"
+                      : "👤 No face detected"}
                 </span>
-                <span style={{ opacity: 0.8 }}>
+                <span style={{ 
+                  background: remoteDeepfakeResult.is_fake ? "rgba(0,0,0,0.3)" : "rgba(255,255,255,0.2)",
+                  padding: "2px 8px",
+                  borderRadius: "12px",
+                  fontSize: "12px"
+                }}>
                   {remoteDeepfakeResult.face_detected 
-                    ? `${(remoteDeepfakeResult.confidence * 100).toFixed(1)}%`
+                    ? `${(remoteDeepfakeResult.confidence * 100).toFixed(0)}%`
                     : ""}
                 </span>
               </div>
@@ -842,6 +883,207 @@ export default function ConferencePage() {
           <span style={{ color: "#666", fontSize: "12px" }}>
             {detectionStatus === 'checking' ? '• Analyzing...' : '• Monitoring'}
           </span>
+          <button
+            onClick={() => setShowTestPanel(!showTestPanel)}
+            style={{
+              marginLeft: "auto",
+              padding: "6px 12px",
+              background: "#a855f7",
+              color: "#fff",
+              border: "none",
+              borderRadius: "6px",
+              cursor: "pointer",
+              fontSize: "12px",
+            }}
+          >
+            🎬 Test Video
+          </button>
+        </div>
+      )}
+
+      {/* Video Test Panel */}
+      {showTestPanel && (
+        <div
+          style={{
+            marginTop: "16px",
+            padding: "20px",
+            background: "rgba(255,255,255,0.05)",
+            border: "1px solid rgba(168, 85, 247, 0.3)",
+            borderRadius: "12px",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+            <h3 style={{ color: "#fff", margin: 0 }}>🎬 Test Deepfake Detection</h3>
+            <button onClick={() => setShowTestPanel(false)} style={{ background: "none", border: "none", color: "#888", cursor: "pointer", fontSize: "20px" }}>✕</button>
+          </div>
+          
+          <p style={{ color: "#888", fontSize: "14px", marginBottom: "16px" }}>
+            Upload a video to test if it contains a deepfake. The AI will analyze frames and detect manipulated faces.
+          </p>
+          
+          <div style={{ display: "flex", gap: "12px", marginBottom: "16px", flexWrap: "wrap" }}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="video/*"
+              style={{ display: "none" }}
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) {
+                  const url = URL.createObjectURL(file);
+                  setTestVideoUrl(url);
+                  setTestVideoResult(null);
+                }
+              }}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                padding: "10px 20px",
+                background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)",
+                color: "#fff",
+                border: "none",
+                borderRadius: "8px",
+                cursor: "pointer",
+                fontWeight: "bold",
+              }}
+            >
+              📁 Upload Video
+            </button>
+            
+            {testVideoUrl && (
+              <button
+                onClick={async () => {
+                  if (!testVideoRef.current || testVideoRef.current.readyState < 2) return;
+                  setIsTestingVideo(true);
+                  setTestVideoResult(null);
+                  
+                  try {
+                    const canvas = document.createElement('canvas');
+                    canvas.width = testVideoRef.current.videoWidth || 640;
+                    canvas.height = testVideoRef.current.videoHeight || 480;
+                    const ctx = canvas.getContext('2d');
+                    if (!ctx) return;
+                    
+                    ctx.drawImage(testVideoRef.current, 0, 0, canvas.width, canvas.height);
+                    const frameBase64 = canvas.toDataURL('image/jpeg', 0.9);
+                    
+                    const response = await fetch(`http://${BACKEND_IP}:8000/api/detect/face`, {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ frame: frameBase64, source: 'test' }),
+                    });
+                    
+                    if (response.ok) {
+                      const result: DeepfakeResult = await response.json();
+                      setTestVideoResult(result);
+                    }
+                  } catch (err) {
+                    console.error('Test detection error:', err);
+                  } finally {
+                    setIsTestingVideo(false);
+                  }
+                }}
+                disabled={isTestingVideo}
+                style={{
+                  padding: "10px 20px",
+                  background: isTestingVideo ? "#666" : "#22c55e",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "8px",
+                  cursor: isTestingVideo ? "not-allowed" : "pointer",
+                  fontWeight: "bold",
+                }}
+              >
+                {isTestingVideo ? "🔄 Analyzing..." : "🔍 Analyze Current Frame"}
+              </button>
+            )}
+          </div>
+          
+          {testVideoUrl && (
+            <div style={{ position: "relative" }}>
+              <video
+                ref={testVideoRef}
+                src={testVideoUrl}
+                controls
+                style={{
+                  width: "100%",
+                  maxHeight: "300px",
+                  borderRadius: "8px",
+                  background: "#1a1a2e",
+                }}
+              />
+              
+              {/* Test Result Badge */}
+              {testVideoResult && (
+                <div
+                  style={{
+                    marginTop: "12px",
+                    padding: "16px",
+                    borderRadius: "8px",
+                    background: testVideoResult.is_fake 
+                      ? "rgba(239, 68, 68, 0.2)" 
+                      : testVideoResult.face_detected 
+                        ? "rgba(34, 197, 94, 0.2)"
+                        : "rgba(156, 163, 175, 0.2)",
+                    border: testVideoResult.is_fake 
+                      ? "2px solid #ef4444" 
+                      : testVideoResult.face_detected 
+                        ? "2px solid #22c55e"
+                        : "2px solid #666",
+                    animation: testVideoResult.is_fake ? "flash 0.5s infinite" : "none",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span style={{ 
+                      color: testVideoResult.is_fake ? "#ef4444" : "#22c55e", 
+                      fontWeight: "bold",
+                      fontSize: "18px"
+                    }}>
+                      {testVideoResult.is_fake 
+                        ? "🚨 DEEPFAKE DETECTED 🚨" 
+                        : testVideoResult.face_detected 
+                          ? "✅ GENUINE HUMAN FACE"
+                          : "👤 No face detected"}
+                    </span>
+                    <span style={{ 
+                      color: "#fff",
+                      background: testVideoResult.is_fake ? "#ef4444" : "#22c55e",
+                      padding: "4px 12px",
+                      borderRadius: "20px",
+                      fontWeight: "bold"
+                    }}>
+                      {testVideoResult.face_detected 
+                        ? `${(testVideoResult.confidence * 100).toFixed(1)}% confidence`
+                        : "N/A"}
+                    </span>
+                  </div>
+                  <p style={{ color: "#888", marginTop: "8px", marginBottom: 0, fontSize: "14px" }}>
+                    {testVideoResult.is_fake 
+                      ? "⚠️ This video appears to contain AI-generated or manipulated facial content."
+                      : testVideoResult.face_detected 
+                        ? "✅ This video appears to contain a genuine, unmanipulated human face."
+                        : "No face was detected in the current frame. Try a different frame."}
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
+          
+          {!testVideoUrl && (
+            <div
+              style={{
+                padding: "40px",
+                border: "2px dashed #444",
+                borderRadius: "8px",
+                textAlign: "center",
+                color: "#666",
+              }}
+            >
+              <p style={{ margin: 0 }}>📹 Upload a video file to test deepfake detection</p>
+              <p style={{ margin: "8px 0 0 0", fontSize: "12px" }}>Supports MP4, WebM, MOV formats</p>
+            </div>
+          )}
         </div>
       )}
 

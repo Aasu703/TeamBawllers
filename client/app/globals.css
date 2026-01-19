@@ -2,6 +2,17 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Deepfake detection flash animation */
+@keyframes flash {
+  0%, 100% { opacity: 1; background: rgba(239, 68, 68, 0.95); }
+  50% { opacity: 0.6; background: rgba(255, 0, 0, 1); }
+}
+
+@keyframes pulse-border {
+  0%, 100% { box-shadow: 0 0 20px rgba(255, 0, 0, 0.8); }
+  50% { box-shadow: 0 0 40px rgba(255, 0, 0, 1); }
+}
+
 :root {
   --primary: #6366f1;
   --accent: #8b5cf6;

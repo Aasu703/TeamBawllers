@@ -24,6 +24,7 @@ from models.detector import (
     FaceDetectionResult,
     AudioDetectionResult,
 )
+from models.face_detector import preload_model as preload_face_model
 
 app = FastAPI(title="Cyber Guardian AI Gateway - Deepfake Detection")
 
@@ -36,12 +37,23 @@ app.add_middleware(
 )
 
 
+# Pre-load models on startup
+@app.on_event("startup")
+async def startup_event():
+    """Pre-load AI models on server startup for faster detection"""
+    print("🚀 Starting Cyber Guardian AI Gateway...")
+    print("🔄 Pre-loading AI models...")
+    preload_face_model()
+    print("✅ Server ready!")
+
+
 # ============================================
 # Face Deepfake Detection Endpoints
 # ============================================
 
 class FrameData(BaseModel):
     frame: str  # base64 encoded image
+    source: Optional[str] = "default"  # source identifier (local, remote, test)
 
 
 class AudioData(BaseModel):
@@ -68,8 +80,9 @@ async def detect_frame(data: FrameData):
 async def detect_face(data: FrameData):
     """
     Dedicated face deepfake detection endpoint.
+    Supports separate score buffers for local/remote/test sources.
     """
-    result = detect_face_from_base64(data.frame)
+    result = detect_face_from_base64(data.frame, source=data.source or "default")
     return {
         "is_fake": result.is_fake,
         "confidence": result.confidence,
@@ -146,42 +159,45 @@ async def health_check():
 
 
 # ============================================
-# Frame Analysis (Local fallback)
+# Real-time Frame Analysis with AI Model
 # ============================================
 
 
-def _analyze_frame(frame_b64: str, sent_at_ms: float) -> dict[str, object]:
-    now_ms = time.time() * 1000
-    replay = now_ms - sent_at_ms > 2000
-    # Basic stub heuristic: longer payloads + randomness => confidence.
-    payload = frame_b64.split(",")[-1]
+def _analyze_frame_with_ai(frame_b64: str, source: str = "dashboard") -> dict[str, object]:
+    """Analyze frame using the trained MobileNet model"""
     try:
-        decoded = base64.b64decode(payload, validate=True)
-    except Exception:
+        if not frame_b64 or len(frame_b64) < 100:
+            return {
+                "is_fake": False,
+                "confidence": 0.0,
+                "alert_msg": "Invalid frame data",
+                "face_detected": False,
+            }
+        
+        result = detect_face_from_base64(frame_b64, source=source)
+        
+        if not result.face_detected:
+            return {
+                "is_fake": False,
+                "confidence": 0.0,
+                "alert_msg": result.message,
+                "face_detected": False,
+            }
+        
         return {
-            "is_fake": True,
-            "confidence": 0.99,
-            "alert_msg": "Invalid frame encoding",
+            "is_fake": result.is_fake,
+            "confidence": round(result.confidence, 3),
+            "alert_msg": result.message,
+            "face_detected": True,
         }
-
-    entropy_hint = min(len(set(decoded[:512])), 64) / 64
-    noise = secrets.randbelow(20) / 100
-    confidence = min(0.5 + entropy_hint + noise, 0.99)
-
-    if replay:
+    except Exception as e:
+        print(f"Frame analysis error: {e}")
         return {
-          "is_fake": True,
-          "confidence": max(confidence, 0.85),
-          "alert_msg": "Potential Replay Attack: frame older than 2s",
+            "is_fake": False,
+            "confidence": 0.0,
+            "alert_msg": f"Detection error: {str(e)}",
+            "face_detected": False,
         }
-
-    is_fake = confidence > 0.75
-    alert = "Anomaly detected" if is_fake else "Frame appears authentic"
-    return {
-        "is_fake": is_fake,
-        "confidence": round(confidence, 3),
-        "alert_msg": alert,
-    }
 
 
 @app.websocket("/ws")
@@ -193,13 +209,12 @@ async def websocket_endpoint(ws: WebSocket):
             try:
                 payload = json.loads(data)
                 frame = payload.get("frame")
-                sent_at = float(payload.get("sent_at", 0))
             except (ValueError, TypeError):
                 await ws.send_json({"is_fake": True, "confidence": 0.99, "alert_msg": "Bad payload"})
                 continue
 
             # Use AI model for detection
-            result = _analyze_frame(frame or "", sent_at)
+            result = _analyze_frame_with_ai(frame or "")
             result["timestamp"] = datetime.now(timezone.utc).isoformat()
             await ws.send_json(result)
             await asyncio.sleep(0)

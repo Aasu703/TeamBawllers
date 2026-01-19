@@ -21,9 +21,8 @@ export default function Dashboard() {
         const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         if (videoRef.current) videoRef.current.srcObject = stream;
 
-        // Backend WebSocket - HARDCODED IP for hackathon
-        // Change '172.20.10.13' to host's IP if network changes
-        const BACKEND_IP = '172.20.10.13';
+        // Backend WebSocket
+        const BACKEND_IP = 'localhost';
         ws = new WebSocket(`ws://${BACKEND_IP}:8000/ws`);
         ws.onopen = () => setConnected(true);
         ws.onclose = () => setConnected(false);
@@ -36,10 +35,10 @@ export default function Dashboard() {
               canvasRef.current.width = videoRef.current.videoWidth;
               canvasRef.current.height = videoRef.current.videoHeight;
               ctx.drawImage(videoRef.current, 0, 0);
-              ws.send(JSON.stringify({ frame: canvasRef.current.toDataURL("image/jpeg", 0.6), sent_at: Date.now() }));
+              ws.send(JSON.stringify({ frame: canvasRef.current.toDataURL("image/jpeg", 0.9), sent_at: Date.now() }));
             }
           }
-        }, 500);
+        }, 1000);
       } catch (e) { console.error(e); }
     })();
 
@@ -100,19 +99,31 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* Stats */}
+        {/* Real-time Detection Info */}
         <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
           <div className="card" style={{ textAlign: "center" }}>
-            <div className="stat-value">99.8%</div>
-            <div style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>Accuracy</div>
+            <div style={{ fontSize: "14px", color: "#64748b", marginBottom: "8px" }}>Detection Status</div>
+            <div style={{ 
+              fontSize: "18px", 
+              fontWeight: "700", 
+              color: result?.face_detected ? (result?.is_fake ? "#ef4444" : "#22c55e") : "#64748b" 
+            }}>
+              {result?.face_detected 
+                ? (result?.is_fake ? "🚨 FAKE" : "✅ REAL") 
+                : "👤 No Face"}
+            </div>
           </div>
           <div className="card" style={{ textAlign: "center" }}>
-            <div style={{ fontSize: "28px", fontWeight: "700", color: "#a855f7" }}>&lt;500ms</div>
-            <div style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>Response Time</div>
+            <div style={{ fontSize: "14px", color: "#64748b", marginBottom: "8px" }}>Confidence Score</div>
+            <div style={{ fontSize: "28px", fontWeight: "700", color: "#a855f7" }}>
+              {result?.confidence ? `${(result.confidence * 100).toFixed(0)}%` : "--"}
+            </div>
           </div>
           <div className="card" style={{ textAlign: "center" }}>
-            <div style={{ fontSize: "28px", fontWeight: "700", color: "#22d3ee" }}>24/7</div>
-            <div style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>Monitoring</div>
+            <div style={{ fontSize: "14px", color: "#64748b", marginBottom: "8px" }}>Connection</div>
+            <div style={{ fontSize: "18px", fontWeight: "700", color: connected ? "#22c55e" : "#ef4444" }}>
+              {connected ? "🟢 Live" : "🔴 Offline"}
+            </div>
           </div>
         </div>
       </div>
