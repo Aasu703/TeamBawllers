@@ -1,65 +1,84 @@
-import Image from "next/image";
+import Link from "next/link";
 
 export default function Home() {
   return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div style={{ minHeight: "100vh", display: "flex", flexDirection: "column" }}>
+      {/* Nav */}
+      <nav style={{ padding: "20px 40px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ fontSize: "20px", fontWeight: "700" }} className="gradient-text">Cyber Guardian</div>
+        <div style={{ display: "flex", gap: "12px" }}>
+          <Link href="/login" className="btn btn-secondary">Login</Link>
+          <Link href="/register" className="btn btn-primary">Get Started</Link>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </nav>
+
+      {/* Hero */}
+      <main style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "40px 20px" }}>
+        <div className="badge" style={{ background: "rgba(102,126,234,0.1)", color: "#a78bfa", border: "1px solid rgba(167,139,250,0.2)", marginBottom: "24px" }}>
+          ✨ AI-Powered Security Platform
+        </div>
+        
+        <h1 style={{ fontSize: "clamp(36px, 6vw, 64px)", fontWeight: "800", lineHeight: 1.1, marginBottom: "16px", maxWidth: "800px" }}>
+          <span className="gradient-text">Deepfake Detection</span>
+          <br />
+          <span style={{ color: "#f1f5f9" }}>Made Simple</span>
+        </h1>
+        
+        <p style={{ fontSize: "18px", color: "#94a3b8", maxWidth: "600px", marginBottom: "32px", lineHeight: 1.6 }}>
+          Real-time AI detection for video calls. Protect your team from synthetic media threats with enterprise-grade security.
+        </p>
+
+        <div style={{ display: "flex", gap: "16px", marginBottom: "60px" }}>
+          <Link href="/register" className="btn btn-primary" style={{ padding: "14px 28px", fontSize: "16px" }}>
+            Start Free Trial →
+          </Link>
+          <Link href="/login" className="btn btn-secondary" style={{ padding: "14px 28px", fontSize: "16px" }}>
+            Sign In
+          </Link>
+        </div>
+
+        {/* Stats */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: "24px", maxWidth: "800px", width: "100%" }}>
+          {[
+            { value: "99.8%", label: "Detection Accuracy" },
+            { value: "<500ms", label: "Response Time" },
+            { value: "10M+", label: "Frames Analyzed" },
+            { value: "24/7", label: "Monitoring" }
+          ].map((stat, i) => (
+            <div key={i} className="card" style={{ textAlign: "center", padding: "20px" }}>
+              <div className="stat-value">{stat.value}</div>
+              <div style={{ fontSize: "13px", color: "#64748b", marginTop: "4px" }}>{stat.label}</div>
+            </div>
+          ))}
         </div>
       </main>
+
+      {/* Features */}
+      <section style={{ padding: "60px 40px", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+        <div style={{ maxWidth: "1000px", margin: "0 auto" }}>
+          <h2 style={{ textAlign: "center", fontSize: "28px", fontWeight: "700", marginBottom: "40px" }}>
+            Why <span className="gradient-text">Cyber Guardian</span>?
+          </h2>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "24px" }}>
+            {[
+              { icon: "🛡️", title: "Enterprise Security", desc: "Military-grade encryption for all your communications" },
+              { icon: "⚡", title: "Real-time Detection", desc: "Instant deepfake analysis during live video calls" },
+              { icon: "🎥", title: "Secure Conferencing", desc: "Built-in video calls with threat monitoring" }
+            ].map((f, i) => (
+              <div key={i} className="card" style={{ textAlign: "center" }}>
+                <div style={{ fontSize: "32px", marginBottom: "12px" }}>{f.icon}</div>
+                <h3 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "8px" }}>{f.title}</h3>
+                <p style={{ fontSize: "14px", color: "#64748b", lineHeight: 1.5 }}>{f.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer style={{ padding: "20px", textAlign: "center", borderTop: "1px solid rgba(255,255,255,0.05)" }}>
+        <p style={{ fontSize: "13px", color: "#475569" }}>© 2026 Cyber Guardian. Protecting digital authenticity.</p>
+      </footer>
     </div>
   );
 }
