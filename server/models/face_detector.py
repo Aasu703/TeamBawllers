@@ -19,10 +19,17 @@ _model_loaded = False
 
 # Separate score buffers for different video sources (local, remote, test)
 _score_buffers: Dict[str, list] = {}
-BUFFER_SIZE = 10  # Buffer for smoothing
+BUFFER_SIZE = 25  # Larger buffer for maximum stability
 
-# Configuration - threshold at 85%
-DEEPFAKE_STRICTNESS = 0.85  # Back to 0.80 like original run_mobilenet.py
+# Configuration - VERY STRICT threshold at 92%
+# IMPORTANT: score < 0.92 = REAL human, score >= 0.92 = FAKE/AI
+# This is very strict to avoid false positives on real humans
+DEEPFAKE_STRICTNESS = 0.92
+
+# Additional accuracy settings
+MIN_FACE_SIZE = 60  # Minimum face size for reliable detection
+CONFIDENCE_MARGIN = 0.05  # Margin around threshold for uncertain cases
+OUTLIER_THRESHOLD = 0.12  # Remove outliers that differ by more than this from median
 
 @dataclass
 class FaceDetectionResult:
@@ -180,8 +187,17 @@ def detect_face_deepfake(image_bytes: bytes, source: str = "default") -> FaceDet
         # Process largest face (same as run_mobilenet.py)
         x, y, w, h = max(faces, key=lambda f: f[2] * f[3])
         
+        # Skip faces that are too small for reliable detection
+        if w < MIN_FACE_SIZE or h < MIN_FACE_SIZE:
+            return FaceDetectionResult(
+                is_fake=False,
+                confidence=0.0,
+                message="Face too small for reliable detection",
+                face_detected=False
+            )
+        
         # Add some padding around face for better detection
-        pad = int(min(w, h) * 0.1)
+        pad = int(min(w, h) * 0.15)  # Increased padding for better context
         x = max(0, x - pad)
         y = max(0, y - pad)
         w = min(width - x, w + 2 * pad)
@@ -198,7 +214,11 @@ def detect_face_deepfake(image_bytes: bytes, source: str = "default") -> FaceDet
             )
         
         # Preprocessing EXACTLY like run_mobilenet.py
-        resized = cv2.resize(face_img, (224, 224))
+        resized = cv2.resize(face_img, (224, 224), interpolation=cv2.INTER_LANCZOS4)
+        
+        # Apply bilateral filter to reduce noise while preserving edges
+        resized = cv2.bilateralFilter(resized, 5, 75, 75)
+        
         normalized = (resized / 127.5) - 1.0  # Exact same as run_mobilenet.py
         input_batch = np.expand_dims(normalized, axis=0)
         
@@ -215,20 +235,38 @@ def detect_face_deepfake(image_bytes: bytes, source: str = "default") -> FaceDet
         if len(_score_buffers[source]) > BUFFER_SIZE:
             _score_buffers[source].pop(0)
         
-        avg_score = sum(_score_buffers[source]) / len(_score_buffers[source])
+        # Remove outliers for more stable detection
+        scores = _score_buffers[source].copy()
+        if len(scores) >= 5:
+            median_score = sorted(scores)[len(scores) // 2]
+            scores = [s for s in scores if abs(s - median_score) < OUTLIER_THRESHOLD]
+            if len(scores) == 0:
+                scores = _score_buffers[source].copy()
         
-        # INVERTED LOGIC: Higher score = MORE likely to be FAKE
-        # Real faces get lower scores (~0.80), Deepfakes get higher scores (~0.88+)
+        # Use weighted average (recent frames weighted more heavily)
+        weights = [i ** 1.5 for i in range(1, len(scores) + 1)]  # Exponential weighting
+        weighted_sum = sum(s * w for s, w in zip(scores, weights))
+        total_weight = sum(weights)
+        avg_score = weighted_sum / total_weight
+        
+        # STRICT LOGIC: 
+        # score < 0.92 = REAL human (genuine face)
+        # score >= 0.92 = FAKE/AI (deepfake detected)
         is_fake = bool(avg_score >= DEEPFAKE_STRICTNESS)
         
+        # Calculate display confidence (how confident we are in our classification)
         if is_fake:
-            message = f"⚠️ DEEPFAKE DETECTED ({avg_score:.2f})"
+            # For fake: show how far above threshold
+            display_confidence = min(0.99, avg_score)
+            message = f"⚠️ DEEPFAKE DETECTED ({display_confidence*100:.0f}%)"
         else:
-            message = f"✅ GENUINE FACE ({avg_score:.2f})"
+            # For real: show how far below threshold (inverted for display)
+            display_confidence = min(0.99, 1.0 - avg_score)
+            message = f"✅ GENUINE FACE ({display_confidence*100:.0f}%)"
         
         return FaceDetectionResult(
             is_fake=is_fake,
-            confidence=float(avg_score),
+            confidence=float(display_confidence),
             message=message,
             face_detected=True
         )

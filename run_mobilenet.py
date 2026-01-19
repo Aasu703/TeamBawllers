@@ -4,7 +4,8 @@ import tensorflow as tf
 import time
 
 # --- CONFIGURATION ---
-DEEPFAKE_STRICTNESS = 0.80   # Lowered to 0.80 to catch your 0.84 scores
+# STRICT THRESHOLD: score < 0.85 = REAL human, score >= 0.85 = FAKE/AI
+DEEPFAKE_STRICTNESS = 0.85
 LIVENESS_THRESHOLD = 0.15    # Ratio threshold (Sensitivity)
 WINDOW_NAME = "Final Robust Demo"
 
@@ -86,8 +87,8 @@ while True:
             scale_y = 720 / frame.shape[0]
             dx, dy, dw, dh = int(x*scale_x), int(y*scale_y), int(w*scale_x), int(h*scale_y)
 
-            color = (0, 255, 0) if avg_score > DEEPFAKE_STRICTNESS else (0, 0, 255)
-            label = "REAL" if avg_score > DEEPFAKE_STRICTNESS else "FAKE"
+            color = (0, 255, 0) if avg_score < DEEPFAKE_STRICTNESS else (0, 0, 255)
+            label = "REAL" if avg_score < DEEPFAKE_STRICTNESS else "FAKE"
             
             cv2.rectangle(display_frame, (dx, dy), (dx+dw, dy+dh), color, 3)
             cv2.putText(display_frame, f"{label} ({avg_score:.2f})", (dx, dy-10), 
@@ -115,7 +116,7 @@ while True:
         # Calculate Ratio Difference
         diff = current_ratio - baseline_ratio
         
-        is_real_person = avg_score > DEEPFAKE_STRICTNESS
+        is_real_person = avg_score < DEEPFAKE_STRICTNESS
         is_reflecting = diff > LIVENESS_THRESHOLD
         
         print(f"DEBUG: Score={avg_score:.2f}, RatioDiff={diff:.3f} (Threshold={LIVENESS_THRESHOLD})")

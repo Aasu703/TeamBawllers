@@ -19,8 +19,8 @@ export function verifyAuthToken(token: string) {
   return jwt.verify(token, getJwtSecret()) as { sub: string; email: string };
 }
 
-export function setAuthCookie(token: string) {
-  cookies().set(AUTH_COOKIE, token, {
+export async function setAuthCookie(token: string) {
+  (await cookies()).set(AUTH_COOKIE, token, {
     httpOnly: true,
     sameSite: "strict",
     secure: process.env.NODE_ENV === "production",
@@ -29,6 +29,6 @@ export function setAuthCookie(token: string) {
   });
 }
 
-export function clearAuthCookie() {
-  cookies().delete(AUTH_COOKIE);
+export async function clearAuthCookie() {
+  (await cookies()).delete(AUTH_COOKIE);
 }
