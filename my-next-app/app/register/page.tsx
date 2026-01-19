@@ -3,25 +3,28 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 
-export default function Login() {
+export default function Register() {
   const router = useRouter();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (password !== confirm) { setError("Passwords don't match"); return; }
+    if (password.length < 8) { setError("Password must be 8+ characters"); return; }
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/login", {
+      const res = await fetch("/api/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password })
       });
-      if (res.ok) router.push("/dashboard");
-      else setError("Invalid credentials");
+      if (res.ok) router.push("/login");
+      else setError("Registration failed");
     } catch { setError("Connection failed"); }
     setLoading(false);
   };
@@ -34,31 +37,31 @@ export default function Login() {
         </div>
         
         <div className="card">
-          <h1 style={{ fontSize: "22px", fontWeight: "600", marginBottom: "6px" }}>Welcome back</h1>
-          <p style={{ fontSize: "14px", color: "#64748b", marginBottom: "24px" }}>Sign in to your account</p>
+          <h1 style={{ fontSize: "22px", fontWeight: "600", marginBottom: "6px" }}>Create account</h1>
+          <p style={{ fontSize: "14px", color: "#64748b", marginBottom: "24px" }}>Start your free trial today</p>
           
           <form onSubmit={handleSubmit}>
             <div style={{ marginBottom: "16px" }}>
               <label style={{ display: "block", fontSize: "13px", fontWeight: "500", marginBottom: "6px", color: "#94a3b8" }}>Email</label>
               <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="input" placeholder="you@example.com" required />
             </div>
-            <div style={{ marginBottom: "20px" }}>
+            <div style={{ marginBottom: "16px" }}>
               <label style={{ display: "block", fontSize: "13px", fontWeight: "500", marginBottom: "6px", color: "#94a3b8" }}>Password</label>
-              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="input" placeholder="" required />
+              <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} className="input" placeholder="Min 8 characters" required />
+            </div>
+            <div style={{ marginBottom: "20px" }}>
+              <label style={{ display: "block", fontSize: "13px", fontWeight: "500", marginBottom: "6px", color: "#94a3b8" }}>Confirm Password</label>
+              <input type="password" value={confirm} onChange={(e) => setConfirm(e.target.value)} className="input" placeholder="Re-enter password" required />
             </div>
             {error && <p style={{ color: "#f87171", fontSize: "13px", marginBottom: "16px" }}>{error}</p>}
             <button type="submit" className="btn btn-primary" style={{ width: "100%", marginBottom: "16px" }} disabled={loading}>
-              {loading ? "Signing in..." : "Sign In"}
+              {loading ? "Creating..." : "Create Account"}
             </button>
           </form>
           
           <p style={{ textAlign: "center", fontSize: "14px", color: "#64748b" }}>
-            Don't have an account? <Link href="/register" style={{ color: "#a78bfa" }}>Sign up</Link>
+            Already have an account? <Link href="/login" style={{ color: "#a78bfa" }}>Sign in</Link>
           </p>
-        </div>
-        
-        <div style={{ marginTop: "16px", padding: "12px 16px", borderRadius: "10px", background: "rgba(102,126,234,0.1)", border: "1px solid rgba(102,126,234,0.2)", textAlign: "center" }}>
-          <span style={{ fontSize: "13px", color: "#a78bfa" }}>Demo: test@example.com / password123</span>
         </div>
       </div>
     </div>
