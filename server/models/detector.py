@@ -1,31 +1,40 @@
 """
 Deepfake Detection Module
 =========================
-AI TEAM: This is where you add your detection model!
-
-Currently using a PLACEHOLDER that returns random results.
-Replace with your actual AI model.
+Unified detection interface combining face and audio deepfake detection.
 """
 
 import base64
-import random
 from dataclasses import dataclass
 from typing import Optional
+
+# Import specialized detectors
+from .face_detector import (
+    detect_face_deepfake, 
+    detect_face_from_base64, 
+    FaceDetectionResult
+)
+from .audio_detector import (
+    detect_audio_deepfake, 
+    detect_audio_from_base64,
+    detect_audio_from_pcm,
+    AudioDetectionResult
+)
 
 
 @dataclass
 class DetectionResult:
-    """Result from deepfake detection"""
+    """Combined result from deepfake detection"""
     is_fake: bool
     confidence: float  # 0.0 to 1.0
     message: str
+    face_result: Optional[FaceDetectionResult] = None
+    audio_result: Optional[AudioDetectionResult] = None
 
 
 def detect_deepfake(image_bytes: bytes) -> DetectionResult:
     """
-    Detect if an image contains a deepfake.
-    
-    AI TEAM: Replace this with your actual model!
+    Detect if an image contains a deepfake (face detection).
     
     Args:
         image_bytes: Raw image bytes (JPEG/PNG)
@@ -33,85 +42,40 @@ def detect_deepfake(image_bytes: bytes) -> DetectionResult:
     Returns:
         DetectionResult with is_fake, confidence, and message
     """
-    # ============================================
-    # PLACEHOLDER - Replace with your AI model!
-    # ============================================
-    
-    # Simulate detection (random for demo)
-    confidence = random.uniform(0.1, 0.95)
-    is_fake = confidence > 0.5
-    
-    if is_fake:
-        message = f"⚠️ Potential deepfake detected ({confidence:.1%} confidence)"
-    else:
-        message = f"✅ No deepfake detected ({1-confidence:.1%} authentic)"
+    face_result = detect_face_deepfake(image_bytes)
     
     return DetectionResult(
-        is_fake=is_fake,
-        confidence=confidence,
-        message=message
+        is_fake=face_result.is_fake,
+        confidence=face_result.confidence,
+        message=face_result.message,
+        face_result=face_result
     )
 
 
 def detect_from_base64(base64_string: str) -> DetectionResult:
     """
     Detect deepfake from a base64 encoded image.
-    
-    Args:
-        base64_string: Base64 encoded image (with or without data URL prefix)
-    
-    Returns:
-        DetectionResult
     """
-    try:
-        # Remove data URL prefix if present
-        if "," in base64_string:
-            base64_string = base64_string.split(",")[1]
-        
-        # Decode base64 to bytes
-        image_bytes = base64.b64decode(base64_string)
-        
-        return detect_deepfake(image_bytes)
+    face_result = detect_face_from_base64(base64_string)
     
-    except Exception as e:
-        return DetectionResult(
-            is_fake=False,
-            confidence=0.0,
-            message=f"Error processing image: {str(e)}"
-        )
+    return DetectionResult(
+        is_fake=face_result.is_fake,
+        confidence=face_result.confidence,
+        message=face_result.message,
+        face_result=face_result
+    )
 
 
-# ============================================
-# AI TEAM: Add your model loading here
-# ============================================
-# 
-# Example with PyTorch:
-# 
-# import torch
-# from torchvision import transforms
-# from PIL import Image
-# import io
-# 
-# # Load your trained model
-# MODEL_PATH = "path/to/your/model.pth"
-# model = torch.load(MODEL_PATH)
-# model.eval()
-# 
-# transform = transforms.Compose([
-#     transforms.Resize((224, 224)),
-#     transforms.ToTensor(),
-#     transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225])
-# ])
-# 
-# def detect_deepfake(image_bytes: bytes) -> DetectionResult:
-#     image = Image.open(io.BytesIO(image_bytes))
-#     tensor = transform(image).unsqueeze(0)
-#     
-#     with torch.no_grad():
-#         output = model(tensor)
-#         confidence = torch.sigmoid(output).item()
-#     
-#     is_fake = confidence > 0.5
-#     message = "Deepfake detected!" if is_fake else "Authentic"
-#     
-#     return DetectionResult(is_fake, confidence, message)
+# Re-export for convenience
+__all__ = [
+    'DetectionResult',
+    'FaceDetectionResult', 
+    'AudioDetectionResult',
+    'detect_deepfake',
+    'detect_from_base64',
+    'detect_face_deepfake',
+    'detect_face_from_base64',
+    'detect_audio_deepfake',
+    'detect_audio_from_base64',
+    'detect_audio_from_pcm',
+]

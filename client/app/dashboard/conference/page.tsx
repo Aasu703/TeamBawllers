@@ -1,9 +1,18 @@
 ﻿"use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 const BACKEND_IP = "172.20.10.13";
+
+// Deepfake detection result interface
+interface DeepfakeResult {
+  is_fake: boolean;
+  confidence: number;
+  message: string;
+  face_detected?: boolean;
+  timestamp?: string;
+}
 
 export default function ConferencePage() {
   const router = useRouter();
@@ -18,6 +27,8 @@ export default function ConferencePage() {
   const initRef = useRef(false); // Prevent double init
   const isHostRef = useRef(false);
   const pendingCandidates = useRef<RTCIceCandidateInit[]>([]);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const detectionIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [connected, setConnected] = useState(false);
@@ -30,6 +41,81 @@ export default function ConferencePage() {
   const [participants, setParticipants] = useState(1);
   const [isHost, setIsHost] = useState(false);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
+  
+  // Deepfake detection states
+  const [localDeepfakeResult, setLocalDeepfakeResult] = useState<DeepfakeResult | null>(null);
+  const [remoteDeepfakeResult, setRemoteDeepfakeResult] = useState<DeepfakeResult | null>(null);
+  const [isDetectionEnabled, setIsDetectionEnabled] = useState(true);
+  const [detectionStatus, setDetectionStatus] = useState<'idle' | 'checking' | 'error'>('idle');
+
+  // Function to capture frame from video and send to detection API
+  const captureAndDetect = useCallback(async (
+    videoElement: HTMLVideoElement | null,
+    setResult: (result: DeepfakeResult | null) => void,
+    label: string
+  ) => {
+    if (!videoElement || videoElement.readyState < 2 || !isDetectionEnabled) return;
+
+    try {
+      setDetectionStatus('checking');
+      
+      // Create canvas to capture frame
+      const canvas = document.createElement('canvas');
+      canvas.width = videoElement.videoWidth || 640;
+      canvas.height = videoElement.videoHeight || 480;
+      const ctx = canvas.getContext('2d');
+      
+      if (!ctx) return;
+      
+      ctx.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+      const frameBase64 = canvas.toDataURL('image/jpeg', 0.8);
+      
+      // Send to detection API
+      const response = await fetch(`http://${BACKEND_IP}:8000/api/detect/face`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ frame: frameBase64 }),
+      });
+      
+      if (response.ok) {
+        const result: DeepfakeResult = await response.json();
+        setResult(result);
+        setDetectionStatus('idle');
+      }
+    } catch (err) {
+      console.error(`Detection error (${label}):`, err);
+      setDetectionStatus('error');
+    }
+  }, [isDetectionEnabled]);
+
+  // Start periodic deepfake detection
+  useEffect(() => {
+    if (!isDetectionEnabled) {
+      if (detectionIntervalRef.current) {
+        clearInterval(detectionIntervalRef.current);
+        detectionIntervalRef.current = null;
+      }
+      return;
+    }
+
+    // Run detection every 2 seconds
+    detectionIntervalRef.current = setInterval(() => {
+      // Detect local video
+      captureAndDetect(localVideoRef.current, setLocalDeepfakeResult, 'local');
+      
+      // Detect remote video if connected
+      if (hasRemote && remoteVideoRef.current) {
+        captureAndDetect(remoteVideoRef.current, setRemoteDeepfakeResult, 'remote');
+      }
+    }, 2000);
+
+    return () => {
+      if (detectionIntervalRef.current) {
+        clearInterval(detectionIntervalRef.current);
+      }
+    };
+  }, [isDetectionEnabled, hasRemote, captureAndDetect]);
+
   useEffect(() => {
     if (remoteVideoRef.current && remoteStream) {
       remoteVideoRef.current.srcObject = remoteStream;
@@ -486,6 +572,7 @@ export default function ConferencePage() {
             background: "rgba(255,255,255,0.05)",
             borderRadius: "12px",
             padding: "16px",
+            position: "relative",
           }}
         >
           <div
@@ -520,6 +607,43 @@ export default function ConferencePage() {
               transform: "scaleX(-1)",
             }}
           />
+          {/* Local Deepfake Detection Badge */}
+          {localDeepfakeResult && isDetectionEnabled && (
+            <div
+              style={{
+                position: "absolute",
+                bottom: "24px",
+                left: "24px",
+                right: "24px",
+                padding: "8px 12px",
+                borderRadius: "8px",
+                background: localDeepfakeResult.is_fake 
+                  ? "rgba(239, 68, 68, 0.9)" 
+                  : localDeepfakeResult.face_detected 
+                    ? "rgba(34, 197, 94, 0.9)"
+                    : "rgba(156, 163, 175, 0.9)",
+                color: "#fff",
+                fontSize: "12px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                backdropFilter: "blur(4px)",
+              }}
+            >
+              <span>
+                {localDeepfakeResult.is_fake 
+                  ? "⚠️ DEEPFAKE DETECTED" 
+                  : localDeepfakeResult.face_detected 
+                    ? "✅ AUTHENTIC"
+                    : "👤 No face"}
+              </span>
+              <span style={{ opacity: 0.8 }}>
+                {localDeepfakeResult.face_detected 
+                  ? `${(localDeepfakeResult.confidence * 100).toFixed(1)}%`
+                  : ""}
+              </span>
+            </div>
+          )}
         </div>
 
         {hasRemote ? (
@@ -528,6 +652,7 @@ export default function ConferencePage() {
               background: "rgba(255,255,255,0.05)",
               borderRadius: "12px",
               padding: "16px",
+              position: "relative",
             }}
           >
             <span
@@ -547,6 +672,44 @@ export default function ConferencePage() {
                 background: "#1a1a2e",
               }}
             />
+            {/* Remote Deepfake Detection Badge */}
+            {remoteDeepfakeResult && isDetectionEnabled && (
+              <div
+                style={{
+                  position: "absolute",
+                  bottom: "24px",
+                  left: "24px",
+                  right: "24px",
+                  padding: "8px 12px",
+                  borderRadius: "8px",
+                  background: remoteDeepfakeResult.is_fake 
+                    ? "rgba(239, 68, 68, 0.95)" 
+                    : remoteDeepfakeResult.face_detected 
+                      ? "rgba(34, 197, 94, 0.9)"
+                      : "rgba(156, 163, 175, 0.9)",
+                  color: "#fff",
+                  fontSize: "12px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  backdropFilter: "blur(4px)",
+                  border: remoteDeepfakeResult.is_fake ? "2px solid #ef4444" : "none",
+                }}
+              >
+                <span style={{ fontWeight: remoteDeepfakeResult.is_fake ? "bold" : "normal" }}>
+                  {remoteDeepfakeResult.is_fake 
+                    ? "🚨 DEEPFAKE ALERT" 
+                    : remoteDeepfakeResult.face_detected 
+                      ? "✅ AUTHENTIC"
+                      : "👤 No face"}
+                </span>
+                <span style={{ opacity: 0.8 }}>
+                  {remoteDeepfakeResult.face_detected 
+                    ? `${(remoteDeepfakeResult.confidence * 100).toFixed(1)}%`
+                    : ""}
+                </span>
+              </div>
+            )}
           </div>
         ) : (
           <div
@@ -592,7 +755,7 @@ export default function ConferencePage() {
         )}
       </div>
 
-      <div style={{ display: "flex", justifyContent: "center", gap: "12px" }}>
+      <div style={{ display: "flex", justifyContent: "center", gap: "12px", flexWrap: "wrap" }}>
         <button
           onClick={toggleAudio}
           style={{
@@ -618,6 +781,19 @@ export default function ConferencePage() {
           }}
         >
           {isVideoOff ? "📷 Start Video" : "🎥 Stop Video"}
+        </button>
+        <button
+          onClick={() => setIsDetectionEnabled(!isDetectionEnabled)}
+          style={{
+            padding: "12px 24px",
+            background: isDetectionEnabled ? "#22c55e" : "#333",
+            color: "#fff",
+            border: "none",
+            borderRadius: "8px",
+            cursor: "pointer",
+          }}
+        >
+          {isDetectionEnabled ? "🛡️ AI Shield ON" : "🛡️ AI Shield OFF"}
         </button>
         <button
           onClick={copyMeetingId}
@@ -646,6 +822,28 @@ export default function ConferencePage() {
           📞 End
         </button>
       </div>
+
+      {/* Detection Status Bar */}
+      {isDetectionEnabled && (
+        <div
+          style={{
+            marginTop: "16px",
+            padding: "12px 16px",
+            background: "rgba(168, 85, 247, 0.1)",
+            border: "1px solid rgba(168, 85, 247, 0.3)",
+            borderRadius: "8px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "12px",
+          }}
+        >
+          <span style={{ color: "#a855f7" }}>🛡️ AI Deepfake Shield Active</span>
+          <span style={{ color: "#666", fontSize: "12px" }}>
+            {detectionStatus === 'checking' ? '• Analyzing...' : '• Monitoring'}
+          </span>
+        </div>
+      )}
 
       <style jsx global>{`
         @keyframes spin {

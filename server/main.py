@@ -13,10 +13,19 @@ from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-# Import AI model (AI team will update this)
-from models.detector import detect_deepfake, detect_from_base64, DetectionResult
+# Import AI models
+from models.detector import (
+    detect_deepfake, 
+    detect_from_base64, 
+    DetectionResult,
+    detect_face_from_base64,
+    detect_audio_from_base64,
+    detect_audio_from_pcm,
+    FaceDetectionResult,
+    AudioDetectionResult,
+)
 
-app = FastAPI(title="Cyber Guardian AI Gateway")
+app = FastAPI(title="Cyber Guardian AI Gateway - Deepfake Detection")
 
 app.add_middleware(
     CORSMiddleware,
@@ -28,20 +37,59 @@ app.add_middleware(
 
 
 # ============================================
-# AI Detection Endpoint (AI Team works here!)
+# Face Deepfake Detection Endpoints
 # ============================================
 
 class FrameData(BaseModel):
     frame: str  # base64 encoded image
 
 
+class AudioData(BaseModel):
+    audio: str  # base64 encoded audio
+
+
 @app.post("/api/detect")
 async def detect_frame(data: FrameData):
     """
     Detect deepfake from a base64 encoded image frame.
-    AI Team: The actual detection logic is in models/detector.py
+    Uses MobileNet Hybrid model for face deepfake detection.
     """
     result = detect_from_base64(data.frame)
+    return {
+        "is_fake": result.is_fake,
+        "confidence": result.confidence,
+        "message": result.message,
+        "face_detected": result.face_result.face_detected if result.face_result else False,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+
+@app.post("/api/detect/face")
+async def detect_face(data: FrameData):
+    """
+    Dedicated face deepfake detection endpoint.
+    """
+    result = detect_face_from_base64(data.frame)
+    return {
+        "is_fake": result.is_fake,
+        "confidence": result.confidence,
+        "message": result.message,
+        "face_detected": result.face_detected,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+
+# ============================================
+# Audio Deepfake Detection Endpoints
+# ============================================
+
+@app.post("/api/detect/audio")
+async def detect_audio(data: AudioData):
+    """
+    Detect deepfake from base64 encoded audio.
+    Uses trained Keras model for audio deepfake detection.
+    """
+    result = detect_audio_from_base64(data.audio)
     return {
         "is_fake": result.is_fake,
         "confidence": result.confidence,
@@ -66,10 +114,35 @@ async def detect_upload(file: UploadFile = File(...)):
     }
 
 
+@app.post("/api/detect/audio/upload")
+async def detect_audio_upload(file: UploadFile = File(...)):
+    """
+    Detect deepfake from uploaded audio file.
+    """
+    from models.audio_detector import detect_audio_deepfake
+    
+    contents = await file.read()
+    result = detect_audio_deepfake(contents)
+    return {
+        "is_fake": result.is_fake,
+        "confidence": result.confidence,
+        "message": result.message,
+        "filename": file.filename,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+
 @app.get("/api/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "ok", "timestamp": datetime.now(timezone.utc).isoformat()}
+    return {
+        "status": "ok", 
+        "models": {
+            "face": "MobileNet_Hybrid",
+            "audio": "deepfake_detector.keras"
+        },
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
 
 
 # ============================================
