@@ -88,3 +88,10 @@ temp/
 
 # Redis dump
 dump.rdb
+
+# AI Model data folders
+for-2sec
+for-norm
+for-original
+for-rerec
+archive.zip
